@@ -1,0 +1,94 @@
+// bmb_pwa: Основна структура PWA на Next.js
+
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import KycVerification from "@/components/KycVerification";
+import axios from "axios";
+import PaymentProcessor from "@/components/PaymentProcessor";
+import RatingSystem from "@/components/RatingSystem";
+
+const Map = dynamic(() => import("@/components/Map"), { ssr: false });
+const Chat = dynamic(() => import("@/components/Chat"), { ssr: false });
+
+export default function Home() {
+  const [user, setUser] = useState(null);
+  const [kycVerified, setKycVerified] = useState(false);
+  const [selectedPerformer, setSelectedPerformer] = useState(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState(null);
+  const [showRating, setShowRating] = useState(false);
+
+  useEffect(() => {
+    // Перевірка KYC через локальне сховище (тимчасове рішення)
+    const userData = localStorage.getItem("bmb_user");
+    if (userData) {
+      const parsedData = JSON.parse(userData);
+      setUser(parsedData);
+      setKycVerified(parsedData.kycVerified);
+    }
+  }, []);
+
+  const handleKycSuccess = async (verifiedUser) => {
+    try {
+      // Відправка запиту на бекенд для перевірки KYC (Sumsub API інтеграція)
+      const response = await axios.post("/api/kyc", { userId: verifiedUser.id });
+      if (response.data.verified) {
+        verifiedUser.kycVerified = true;
+        setUser(verifiedUser);
+        setKycVerified(true);
+        localStorage.setItem("bmb_user", JSON.stringify(verifiedUser));
+      }
+    } catch (error) {
+      console.error("KYC перевірка не вдалася", error);
+    }
+  };
+
+  const handlePerformerSelect = (performer) => {
+    setSelectedPerformer(performer);
+    setIsChatOpen(true);
+  };
+
+  const handlePaymentCompletion = (status) => {
+    setPaymentStatus(status);
+    if (status === "success") {
+      alert("Оплата успішна! Замовлення підтверджено.");
+      setShowRating(true);
+    } else {
+      alert("Помилка оплати. Спробуйте ще раз.");
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center bg-gray-100">
+      <header className="w-full p-4 bg-gradient-to-r from-blue-600 to-purple-500 text-white text-center text-2xl font-bold shadow-md">
+        BMB – Платформа рольових сценаріїв
+      </header>
+
+      <main className="flex-grow flex flex-col items-center justify-center w-full px-4 py-8">
+        {!user ? (
+          <KycVerification onSuccess={handleKycSuccess} />
+        ) : (
+          <>
+            {kycVerified ? (
+              <div className="w-full h-full flex flex-col items-center">
+                <h2 className="text-lg font-semibold text-gray-700 mb-4">Доступні виконавці</h2>
+                <div className="w-full flex-grow">
+                  <Map onSelectPerformer={handlePerformerSelect} />
+                </div>
+                {selectedPerformer && (
+                  <>
+                    <Chat performer={selectedPerformer} onClose={() => setIsChatOpen(false)} />
+                    <PaymentProcessor performer={selectedPerformer} onComplete={handlePaymentCompletion} />
+                    {showRating && <RatingSystem performer={selectedPerformer} />}
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="mt-10 text-red-500 text-lg font-medium">Очікується підтвердження KYC...</p>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
